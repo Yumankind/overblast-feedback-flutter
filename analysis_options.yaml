@@ -1,0 +1,6 @@
+# The same lint set as the two apps that use this package (flutter_app and overblast_app), so a
+# file that analyses clean there analyses clean here.
+include: package:flutter_lints/flutter.yaml
+
+formatter:
+  page_width: 120

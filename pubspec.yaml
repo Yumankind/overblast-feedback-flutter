@@ -1,0 +1,27 @@
+name: overblast_feedback
+description: >-
+  Shake-to-report for Flutter apps built on Overblast: a frozen screenshot the reporter chooses to
+  send, tap-to-select by widget, the app's recent logs and network calls, filed as a task in the
+  workspace.
+version: 0.1.0
+homepage: https://overblast.app
+repository: https://github.com/Yumankind/overblast-feedback-flutter
+publish_to: 'none'
+
+environment:
+  sdk: ^3.8.0
+  flutter: '>=3.32.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+  sensors_plus: '>=6.1.0 <8.0.0'
+  path_provider: ^2.1.5
+  package_info_plus: '>=8.1.0 <11.0.0'
+  device_info_plus: '>=11.2.0 <13.0.0'
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0

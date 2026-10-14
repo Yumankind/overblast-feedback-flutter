@@ -1,0 +1,30 @@
+# The gate on the public mirror, github.com/Yumankind/overblast-feedback-flutter.
+#
+# It lives at the PACKAGE ROOT rather than in the monorepo's own `.github/`, because `git subtree
+# split` makes this directory the root of the mirror: what is here is what the mirror runs. In the
+# monorepo it does nothing (GitHub only reads workflows at a repository's root); there, run
+# `flutter analyze && flutter test` in this folder by hand.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: flutter analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
