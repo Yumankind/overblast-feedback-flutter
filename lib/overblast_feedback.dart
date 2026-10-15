@@ -5,7 +5,9 @@ library;
 
 export 'src/anchor.dart' show anchorAt, isFrameworkNoise;
 export 'src/capture.dart' show FeedbackCapture;
-export 'src/controller.dart' show OverblastFeedbackController, FeedbackPresenter;
+export 'src/config.dart' show FeedbackErrorKind, FeedbackErrorPromptConfig, FeedbackRemoteConfig, FeedbackVerification;
+export 'src/controller.dart' show OverblastFeedbackController, FeedbackPresenter, FeedbackPreviousSession;
+export 'src/crash.dart' show FeedbackCrash, FeedbackCrashKind, FeedbackCrashSource, FeedbackTrigger;
 export 'src/device.dart' show FeedbackDeviceFacts, readDeviceFacts;
 export 'src/http_client.dart' show OverblastHttpClient;
 export 'src/log_buffer.dart' show FeedbackLogLevel, FeedbackLogEntry, FeedbackNetworkEntry, stripUrl;
@@ -26,5 +28,8 @@ export 'src/route_observer.dart' show OverblastNavigatorObserver;
 export 'src/shake.dart' show ShakeOptions, ShakeDetector;
 export 'src/store/store.dart' show FeedbackStore, MemoryFeedbackStore, PendingReport;
 export 'src/transport.dart' show FeedbackResult, OverblastFeedbackException, defaultFeedbackEndpoint;
+export 'src/verification/pow.dart' show PowSolver;
+export 'src/verification/registration.dart'
+    show FeedbackDeviceLevel, FeedbackDeviceMethod, FeedbackDeviceRegistration;
 export 'src/version.dart' show sdkName, sdkVersion;
 export 'src/widget.dart' show OverblastFeedback;

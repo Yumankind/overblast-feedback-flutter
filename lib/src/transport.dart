@@ -82,6 +82,9 @@ String fallbackSentence(String code, {String? field, int status = 0}) => switch 
   'rate_limited' => 'Too many reports from this device for now. Try again later.',
   'misconfigured' => 'Feedback is not set up correctly on the server. Try again later.',
   'network' => 'The report could not be sent. Check the connection and try again.',
+  'category_not_accepted' => 'This app does not take this kind of report.',
+  'device_required' => 'This app only accepts reports from a verified device, and this one could not be verified.',
+  'unknown_device' || 'device_signature_invalid' => 'This device could not be verified. Try again.',
   _ => 'The report could not be sent (HTTP $status). Try again later.',
 };
 
@@ -101,15 +104,23 @@ class FeedbackTransport {
   final Duration timeout;
   final http.Client? _client;
 
-  Future<FeedbackResult> send(Map<String, Object?> body) async {
+  Future<FeedbackResult> send(Map<String, Object?> body) => sendBytes(utf8.encode(jsonEncode(body)));
+
+  /// Sends [body] exactly as given, with [headers] beside the key's (a signed report's three device
+  /// headers, §8.3, which cover these very bytes).
+  Future<FeedbackResult> sendBytes(List<int> body, {Map<String, String> headers = const {}}) async {
     final client = _client ?? http.Client();
     final http.Response response;
     try {
       response = await client
           .post(
             endpoint,
-            headers: {'Content-Type': 'application/json', 'X-Overblast-Feedback-Key': feedbackKey},
-            body: jsonEncode(body),
+            headers: {
+              ...headers,
+              'Content-Type': 'application/json',
+              'X-Overblast-Feedback-Key': feedbackKey,
+            },
+            body: body,
           )
           .timeout(timeout);
     } on Exception {

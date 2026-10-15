@@ -26,7 +26,15 @@ void main() {
       feedbackKey: testKey,
       store: store,
       deviceFacts: fakeFacts,
+      // These tests are about the sheet. Device registration has its own (device_test.dart); left on
+      // here, an unmocked platform channel never answers inside a widget test's fake clock, and Send
+      // would wait out its three seconds.
+      deviceVerification: false,
+      // Crash tracking has its own tests (crash_test.dart).
+      trackCrashes: false,
       httpClient: MockClient((req) async {
+        // The config door (§2.1) answers nothing here: the defaults stand.
+        if (req.url.path.endsWith('/config')) return http.Response('', 404);
         requests.add(req);
         return answers.isEmpty
             ? http.Response(jsonEncode({'id': 'fbr_1', 'taskId': 't_1', 'conversationId': null}), 201)
@@ -103,6 +111,8 @@ void main() {
     final context = body['context']! as Map;
     expect(context.keys.toSet().difference(contextKeys), isEmpty);
     expect(context['platform'], 'flutter');
+    expect(context['trigger'], 'button');
+    expect(context['openedAt'], isA<int>());
     expect(context['screen'], '/');
     expect(context['viewport'], {'w': 800, 'h': 600, 'dpr': 3.0});
     final element = body['element']! as Map;

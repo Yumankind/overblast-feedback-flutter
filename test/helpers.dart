@@ -15,7 +15,9 @@ const Set<String> topKeys = {
   'context',
   'element',
   'screenshot',
+  'crash',
   'logs',
+  'logFile',
   'network',
 };
 const Set<String> reporterKeys = {'email', 'name', 'accountRef'};
@@ -36,6 +38,8 @@ const Set<String> contextKeys = {
   'sdk',
   'deviceId',
   'extra',
+  'openedAt',
+  'trigger',
 };
 const Set<String> viewportKeys = {'w', 'h', 'dpr'};
 const Set<String> sdkKeys = {'name', 'version'};
@@ -43,4 +47,8 @@ const Set<String> nativeElementKeys = {'kind', 'path', 'type', 'id', 'label', 'r
 const Set<String> rectKeys = {'x', 'y', 'w', 'h'};
 const Set<String> screenshotKeys = {'contentType', 'base64', 'highlighted'};
 const Set<String> logKeys = {'t', 'level', 'msg', 'src'};
+const Set<String> logRepeatKeys = {'repeat', 'last'};
+const Set<String> crashKeys = {'kind', 'at', 'message', 'stack', 'source'};
+const Set<String> logFileKeys = {'contentType', 'encoding', 'base64', 'lines', 'from', 'to'};
+const Set<String> triggers = {'shake', 'button', 'shortcut', 'agent', 'api', 'relaunch', 'error_prompt'};
 const Set<String> networkKeys = {'t', 'method', 'url', 'status', 'ms'};

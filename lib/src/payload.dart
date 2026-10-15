@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'crash.dart';
 import 'log_buffer.dart';
+import 'logs/log_file.dart';
 import 'version.dart';
 
 /// The numbers in the contract (docs/feedback-reports.md §3.1, §3.2), in one place.
@@ -35,6 +37,22 @@ abstract final class FeedbackLimits {
   static const int logMessage = 4000;
   static const int logSource = 40;
   static const int logBytes = 250000;
+
+  // §3.5. Sizes are decimal and count decoded bytes.
+  static const int bufferLines = 20000;
+  static const int bufferBytes = 2000000;
+  static const int logFileBytes = 4000000;
+  static const int bodyBytes = 8000000;
+
+  /// Each of the two rotating files of the on-disk copy; together at most 4 MB.
+  static const int diskLogFileBytes = 2000000;
+
+  /// The excerpt keeps every warning and error from this long before `openedAt`.
+  static const int excerptWindowMs = 120000;
+
+  // §3.1 `crash`.
+  static const int crashMessage = 2000;
+  static const int crashStack = 16000;
   static const int networkEntries = 100;
   static const int networkUrl = 500;
 }
@@ -114,6 +132,8 @@ class FeedbackContext {
     this.viewport,
     this.deviceId,
     this.extra = const {},
+    this.openedAt,
+    this.trigger,
   });
 
   final String? screen;
@@ -128,6 +148,10 @@ class FeedbackContext {
   final FeedbackViewport? viewport;
   final String? deviceId;
   final Map<String, String> extra;
+
+  /// When the reporter opened the report (§3.4), milliseconds since the epoch.
+  final int? openedAt;
+  final FeedbackTrigger? trigger;
 
   Map<String, Object?> toJson() {
     final out = <String, Object?>{'platform': 'flutter'};
@@ -152,6 +176,8 @@ class FeedbackContext {
       cleanExtra[key] = clip(entry.value, FeedbackLimits.extraValue);
     }
     if (cleanExtra.isNotEmpty) out['extra'] = cleanExtra;
+    if (openedAt != null && openedAt! > 0) out['openedAt'] = openedAt;
+    if (trigger != null) out['trigger'] = trigger!.wire;
     return out;
   }
 }
@@ -244,6 +270,9 @@ class FeedbackPayload {
     this.screenshot,
     this.logs = const [],
     this.network = const [],
+    this.crash,
+    this.logAnchor,
+    this.includeLogFile = true,
   });
 
   final String message;
@@ -252,8 +281,18 @@ class FeedbackPayload {
   final FeedbackContext context;
   final NativeAnchor? element;
   final FeedbackScreenshot? screenshot;
+  /// Every line the buffer held when the report was opened, oldest first. The body carries an excerpt
+  /// of them as `logs` and, when the excerpt leaves some out, all of them as `logFile` (§3.5).
   final List<FeedbackLogEntry> logs;
   final List<FeedbackNetworkEntry> network;
+
+  /// How the previous session ended, for a report offered after it (§3.4).
+  final FeedbackCrash? crash;
+
+  /// The moment the excerpt looks back from: [FeedbackContext.openedAt] unless given (a relaunch
+  /// report looks back from the crash, not from now).
+  final int? logAnchor;
+  final bool includeLogFile;
 
   /// The body of `POST /v1/feedback`: exactly the contract's keys, nulls and empty lists left out,
   /// every string trimmed to its limit.
@@ -274,13 +313,37 @@ class FeedbackPayload {
     out['context'] = context.toJson();
     if (element != null) out['element'] = element!.toJson();
     if (shot != null) out['screenshot'] = shot.toJson();
-    final logJson = fitLogs(logs);
-    if (logJson.isNotEmpty) out['logs'] = logJson;
+    if (crash != null) out['crash'] = crash!.toJson();
+    final anchor = logAnchor ?? context.openedAt ?? (logs.isEmpty ? 0 : logs.last.t);
+    final excerpt = selectExcerpt(logs, anchor: anchor);
+    if (excerpt.isNotEmpty) out['logs'] = [for (final e in excerpt) e.toJson()];
     final net = network.length > FeedbackLimits.networkEntries
         ? network.sublist(network.length - FeedbackLimits.networkEntries)
         : network;
     if (net.isNotEmpty) out['network'] = [for (final n in net) n.toJson()];
+    if (includeLogFile && excerpt.length < logs.length) {
+      // The 8 MB body comes first: the screenshot is held to 5 MB by its own limit, so it always fits
+      // beside everything else, and the log file takes what is left (its base64 is 4/3 of its size).
+      final file = buildLogFile(logs, maxBytes: _logFileRoom(out));
+      if (file != null) out['logFile'] = file.toJson();
+    }
     return out;
+  }
+
+  /// How many bytes of log file still fit in the 8 MB body beside [body], at most 4 MB.
+  static int _logFileRoom(Map<String, Object?> body) {
+    final shot = body['screenshot'];
+    var size = 0;
+    if (shot is Map && shot['base64'] is String) {
+      size += (shot['base64']! as String).length;
+      size += utf8.encode(jsonEncode({...body, 'screenshot': {...shot, 'base64': ''}})).length;
+    } else {
+      size += utf8.encode(jsonEncode(body)).length;
+    }
+    // The logFile object's own keys and numbers, generously.
+    final room = (FeedbackLimits.bodyBytes - size - 400) * 3 ~/ 4;
+    if (room < 1024) return 0;
+    return room < FeedbackLimits.logFileBytes ? room : FeedbackLimits.logFileBytes;
   }
 }
 

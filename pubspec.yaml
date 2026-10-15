@@ -3,7 +3,7 @@ description: >-
   Shake-to-report for Flutter apps built on Overblast: a frozen screenshot the reporter chooses to
   send, tap-to-select by widget, the app's recent logs and network calls, filed as a task in the
   workspace.
-version: 0.1.0
+version: 0.2.0
 homepage: https://overblast.app
 repository: https://github.com/Yumankind/overblast-feedback-flutter
 publish_to: 'none'
@@ -20,8 +20,25 @@ dependencies:
   path_provider: ^2.1.5
   package_info_plus: '>=8.1.0 <11.0.0'
   device_info_plus: '>=11.2.0 <13.0.0'
+  # SHA-256 for the device proof of work and the report signature (docs/feedback-reports.md §8).
+  # Already in every app's graph through http and package_info_plus; named here because we import it.
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Fake time for the error prompt's timing rules; already in flutter_test's own graph.
+  fake_async: ^1.3.0
   flutter_lints: ^6.0.0
+
+flutter:
+  # A plugin since 0.2.0: device registration and report signing need the platform's own keys
+  # (App Attest on iOS, the Android Keystore with key attestation on Android). Other platforms have no
+  # implementation, the channel answers MissingPluginException, and reports go unsigned.
+  plugin:
+    platforms:
+      android:
+        package: app.overblast.feedback.flutter
+        pluginClass: OverblastFeedbackPlugin
+      ios:
+        pluginClass: OverblastFeedbackPlugin

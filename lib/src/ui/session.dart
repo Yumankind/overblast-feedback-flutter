@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../capture.dart';
+import '../controller.dart' show FeedbackPreviousSession;
+import '../crash.dart';
+import '../log_buffer.dart';
 import '../payload.dart';
 import '../transport.dart';
 
@@ -11,8 +14,16 @@ enum FeedbackStage { sheet, picking, done }
 /// One open sheet: what the reporter has typed and chosen so far. It outlives the sheet's widgets,
 /// which come and go as the reporter switches to the picker and back.
 class FeedbackSession extends ChangeNotifier {
-  FeedbackSession({FeedbackCategory? category, String? message, required this.askEmail})
-    : category = category ?? FeedbackCategory.bug,
+  FeedbackSession({
+    FeedbackCategory? category,
+    String? message,
+    required this.askEmail,
+    required this.openedAt,
+    this.trigger = FeedbackTrigger.button,
+    this.previous,
+    this.screenshotsAllowed = true,
+    this.categories = FeedbackCategory.values,
+  }) : category = category ?? FeedbackCategory.bug,
       messageController = TextEditingController(text: message ?? ''),
       emailController = TextEditingController();
 
@@ -21,6 +32,19 @@ class FeedbackSession extends ChangeNotifier {
 
   /// The reporter's email is not known to the app, so the sheet offers the field.
   final bool askEmail;
+
+  /// When the sheet appeared (§3.4), milliseconds since the epoch.
+  final int openedAt;
+  final FeedbackTrigger trigger;
+
+  /// For a report about the previous session (`trigger: relaunch`): how it ended and its logs.
+  final FeedbackPreviousSession? previous;
+
+  /// The key and the app allow a screenshot (§2.1); otherwise the sheet offers none.
+  final bool screenshotsAllowed;
+
+  /// The categories the key accepts (§2); with one, the sheet offers no choice.
+  final List<FeedbackCategory> categories;
 
   final Completer<void> closed = Completer<void>();
 
@@ -40,7 +64,7 @@ class FeedbackSession extends ChangeNotifier {
   set anchor(NativeAnchor? v) => _set(() => _anchor = v);
 
   bool _includeScreenshot = false;
-  bool get includeScreenshot => _includeScreenshot && _capture != null;
+  bool get includeScreenshot => screenshotsAllowed && _includeScreenshot && _capture != null;
   set includeScreenshot(bool v) => _set(() => _includeScreenshot = v);
 
   bool _sending = false;
@@ -50,6 +74,9 @@ class FeedbackSession extends ChangeNotifier {
   String? _error;
   String? get error => _error;
   set error(String? v) => _set(() => _error = v);
+
+  /// The log as it was when the sheet opened; collection is paused while it is open.
+  List<FeedbackLogEntry>? logsAtOpen;
 
   /// After sending: what the worker said, or that the report was kept for later.
   FeedbackResult? result;

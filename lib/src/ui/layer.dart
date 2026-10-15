@@ -32,12 +32,8 @@ class FeedbackLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget content = Builder(
       builder: (context) {
-        final brightness =
-            MediaQuery.maybePlatformBrightnessOf(context) ?? View.of(context).platformDispatcher.platformBrightness;
-        final data =
-            theme ?? ThemeData(useMaterial3: true, brightness: brightness, colorSchemeSeed: const Color(0xFF5B5BD6));
         return Theme(
-          data: data,
+          data: feedbackTheme(context, theme),
           child: Shortcuts(
             shortcuts: WidgetsApp.defaultShortcuts,
             child: Actions(
@@ -76,20 +72,33 @@ class FeedbackLayer extends StatelessWidget {
         );
       },
     );
-    if (Localizations.of<MaterialLocalizations>(context, MaterialLocalizations) == null) {
-      content = Localizations(
-        locale: const Locale('en', 'US'),
-        delegates: const [DefaultMaterialLocalizations.delegate, DefaultWidgetsLocalizations.delegate],
-        child: content,
-      );
-    } else if (Directionality.maybeOf(context) == null) {
-      content = Directionality(textDirection: TextDirection.ltr, child: content);
-    }
-    if (MediaQuery.maybeOf(context) == null) {
-      content = MediaQuery.fromView(view: View.of(context), child: content);
-    }
-    return content;
+    return wrapAmbient(context, content);
   }
+}
+
+/// The sheet's theme: the integrator's, or Material 3 following the system's brightness.
+ThemeData feedbackTheme(BuildContext context, ThemeData? theme) {
+  final brightness =
+      MediaQuery.maybePlatformBrightnessOf(context) ?? View.of(context).platformDispatcher.platformBrightness;
+  return theme ?? ThemeData(useMaterial3: true, brightness: brightness, colorSchemeSeed: const Color(0xFF5B5BD6));
+}
+
+/// Localizations, directionality and a media query around [content], where the app above has none
+/// (the widget may sit above `MaterialApp`).
+Widget wrapAmbient(BuildContext context, Widget content) {
+  if (Localizations.of<MaterialLocalizations>(context, MaterialLocalizations) == null) {
+    content = Localizations(
+      locale: const Locale('en', 'US'),
+      delegates: const [DefaultMaterialLocalizations.delegate, DefaultWidgetsLocalizations.delegate],
+      child: content,
+    );
+  } else if (Directionality.maybeOf(context) == null) {
+    content = Directionality(textDirection: TextDirection.ltr, child: content);
+  }
+  if (MediaQuery.maybeOf(context) == null) {
+    content = MediaQuery.fromView(view: View.of(context), child: content);
+  }
+  return content;
 }
 
 class _SheetFrame extends StatelessWidget {
@@ -216,19 +225,23 @@ class _Form extends StatelessWidget {
       children: [
         const _Handle(),
         Semantics(header: true, child: Text('Report a problem', style: theme.textTheme.titleLarge)),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            for (final c in FeedbackCategory.values)
-              ChoiceChip(
-                label: Text(c.label),
-                selected: session.category == c,
-                onSelected: busy ? null : (_) => session.setCategory(c),
-              ),
-          ],
-        ),
+        // Only the key's categories (§2); with one, nothing to choose.
+        if (session.categories.length > 1) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            key: const ValueKey('overblast_feedback.categories'),
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final c in session.categories)
+                ChoiceChip(
+                  label: Text(c.label),
+                  selected: session.category == c,
+                  onSelected: busy ? null : (_) => session.setCategory(c),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 12),
         TextField(
           key: const ValueKey('overblast_feedback.message'),
@@ -286,20 +299,22 @@ class _Form extends StatelessWidget {
             deleteButtonTooltipMessage: 'Clear the selection',
           ),
         const SizedBox(height: 4),
-        SwitchListTile(
-          key: const ValueKey('overblast_feedback.screenshot'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Attach a screenshot'),
-          subtitle: Text(
-            session.captureFailed
-                ? 'A screenshot could not be taken on this screen.'
-                : !session.captureReady
-                ? 'Taking the screenshot…'
-                : 'Private fields are blanked out.',
+        // The key can switch screenshots off (§2.1); then there is nothing to offer.
+        if (session.screenshotsAllowed)
+          SwitchListTile(
+            key: const ValueKey('overblast_feedback.screenshot'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Attach a screenshot'),
+            subtitle: Text(
+              session.captureFailed
+                  ? 'A screenshot could not be taken on this screen.'
+                  : !session.captureReady
+                  ? 'Taking the screenshot…'
+                  : 'Private fields are blanked out.',
+            ),
+            value: session.includeScreenshot,
+            onChanged: busy || session.capture == null ? null : (v) => session.includeScreenshot = v,
           ),
-          value: session.includeScreenshot,
-          onChanged: busy || session.capture == null ? null : (v) => session.includeScreenshot = v,
-        ),
         if (session.includeScreenshot) _Thumbnail(session: session, surfaceSize: surfaceSize),
         const SizedBox(height: 8),
         Text(
@@ -355,7 +370,11 @@ String _whatWillBeSent(FeedbackSession s) {
   final email = s.emailController.text.trim();
   if (s.askEmail && email.isNotEmpty) parts.add('your email');
   parts.add('device and app details');
-  parts.add('this session’s logs and network calls (no contents)');
+  if (s.previous != null) {
+    parts.add('how the app closed last time and that session’s logs');
+  } else {
+    parts.add('this session’s logs and network calls (no contents)');
+  }
   final head = parts.sublist(0, parts.length - 1).join(', ');
   return 'Sent: $head, and ${parts.last}.';
 }

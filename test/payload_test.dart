@@ -24,6 +24,8 @@ FeedbackPayload full({String message = 'The total does not update', List<Feedbac
     viewport: FeedbackViewport(width: 393, height: 852, devicePixelRatio: 3),
     deviceId: 'abc123_-',
     extra: {'plan': 'pro'},
+    openedAt: 1760440000500,
+    trigger: FeedbackTrigger.shake,
   ),
   element: NativeAnchor(
     path: ['MaterialApp', 'CartScreen', 'ElevatedButton'],
@@ -36,6 +38,13 @@ FeedbackPayload full({String message = 'The total does not update', List<Feedbac
   ),
   screenshot: FeedbackScreenshot(bytes: Uint8List.fromList([1, 2, 3]), highlighted: true),
   logs: logs ?? [FeedbackLogEntry(t: 1760440000123, level: FeedbackLogLevel.error, msg: 'TypeError', src: 'flutter')],
+  crash: const FeedbackCrash(
+    kind: FeedbackCrashKind.crash,
+    source: FeedbackCrashSource.exitInfo,
+    at: 1760439990000,
+    message: 'native crash: SIGSEGV',
+    stack: '0 libapp.so +1234',
+  ),
   network: [
     FeedbackNetworkEntry(
       t: 1760440000100,
@@ -50,7 +59,9 @@ FeedbackPayload full({String message = 'The total does not update', List<Feedbac
 void main() {
   test('every key is one the contract names, and none is missing from a full report', () {
     final json = full().toJson();
-    expect(json.keys.toSet(), topKeys);
+    // logFile only when the excerpt leaves lines out (log_storm_test.dart).
+    expect(json.keys.toSet(), topKeys.difference({'logFile'}));
+    expect((json['crash']! as Map).keys.toSet(), crashKeys);
     expect((json['reporter']! as Map).keys.toSet(), reporterKeys);
     final context = json['context']! as Map;
     // url and userAgent are the web library's.

@@ -67,19 +67,22 @@ void main() {
       expect(ring.toList(), isEmpty);
     });
 
-    test('the log buffer holds 500 by default, redacted on the way in', () {
+    // Since 0.2.0 the buffer holds 20,000 lines and 2 MB by default (contract §3.5); the line cap
+    // is a parameter, set to 500 here. The clock moves 100 ms a line, inside the 50-a-second intake.
+    test('the log buffer keeps its newest lines to its cap, redacted on the way in', () {
       var now = DateTime.fromMillisecondsSinceEpoch(1000);
-      final logs = FeedbackLogBuffer(clock: () => now);
+      final logs = FeedbackLogBuffer(maxLines: 500, clock: () => now);
       for (var i = 0; i < 520; i++) {
+        now = DateTime.fromMillisecondsSinceEpoch(1000 + i * 100);
         logs.add(FeedbackLogLevel.info, 'line $i');
       }
       expect(logs.length, 500);
       expect(logs.entries.first.msg, 'line 20');
-      now = DateTime.fromMillisecondsSinceEpoch(2000);
+      now = DateTime.fromMillisecondsSinceEpoch(60000);
       logs.add(FeedbackLogLevel.error, 'Bearer abcdefghijklmnop', src: 'app');
       final last = logs.entries.last;
       expect(last.msg, 'Bearer [redacted]');
-      expect(last.t, 2000);
+      expect(last.t, 60000);
       expect(last.level, FeedbackLogLevel.error);
       expect(last.src, 'app');
     });
