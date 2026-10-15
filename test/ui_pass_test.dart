@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -403,27 +405,92 @@ void main() {
       }
     }
 
-    testWidgets('"Sent, thank you" for about a second and a half, announced, then gone', (tester) async {
+    final card = find.byKey(const ValueKey('overblast_feedback.done'));
+    final doneButton = find.byKey(const ValueKey('overblast_feedback.done_button'));
+
+    testWidgets('"Sent, thank you": announced, Done focused, gone by itself after 2 s', (tester) async {
       await sendOne(tester);
       expect(find.text('Sent, thank you.'), findsOneWidget);
-      expect(find.byKey(const ValueKey('overblast_feedback.done')), findsOneWidget);
       expect(
         announcements.where((m) => m['type'] == 'announce').map((m) => (m['data']! as Map)['message']),
         contains('Sent, thank you.'),
       );
-      await tester.pump(const Duration(milliseconds: 1300));
-      expect(find.text('Sent, thank you.'), findsOneWidget);
+      await tester.pump();
+      final focused = FocusManager.instance.primaryFocus?.context;
+      expect(focused, isNotNull);
+      expect(find.ancestor(of: find.byWidget(focused!.widget), matching: doneButton), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1800));
+      expect(card, findsOneWidget);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Sent, thank you.'), findsNothing);
+      expect(card, findsNothing);
       expect(find.text('Report a problem'), findsNothing);
     });
 
-    testWidgets('known: "we already know about this one", and nothing else about it', (tester) async {
+    testWidgets('known: "we already know about this one", nothing else about it, 4 s', (tester) async {
       answers.add(http.Response(jsonEncode({'id': 'fbr_2', 'taskId': 't_9', 'conversationId': null, 'known': true}), 201));
       await sendOne(tester);
       expect(find.text("Thanks. We already know about this one and we're on it."), findsOneWidget);
       expect(find.textContaining('t_9'), findsNothing);
-      await tester.pump(const Duration(milliseconds: 1600));
+      await tester.pump(const Duration(milliseconds: 3800));
+      expect(card, findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(card, findsNothing);
+    });
+
+    testWidgets('Done closes at once', (tester) async {
+      await sendOne(tester);
+      await tester.tap(doneButton);
+      await tester.pump();
+      expect(card, findsNothing);
+    });
+
+    testWidgets('a tap on the scrim closes it', (tester) async {
+      await sendOne(tester);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pump();
+      expect(card, findsNothing);
+    });
+
+    testWidgets('dragging it down closes it', (tester) async {
+      await sendOne(tester);
+      await tester.drag(find.text('Sent, thank you.'), const Offset(0, 80));
+      await tester.pump();
+      expect(card, findsNothing);
+    });
+
+    testWidgets('Back closes it', (tester) async {
+      await sendOne(tester);
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pump();
+      expect(card, findsNothing);
+    });
+
+    testWidgets('a pointer over it holds the clock; leaving starts it again', (tester) async {
+      await sendOne(tester);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: tester.getCenter(card));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 6));
+      expect(card, findsOneWidget);
+      await mouse.moveTo(const Offset(5, 5));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 2100));
+      expect(card, findsNothing);
+    });
+
+    testWidgets('accessibility focus on Done holds the clock', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await sendOne(tester);
+      final owner = tester.binding.renderViews.first.owner!.semanticsOwner!;
+      final node = tester.getSemantics(doneButton);
+      owner.performAction(node.id, SemanticsAction.didGainAccessibilityFocus);
+      await tester.pump(const Duration(seconds: 6));
+      expect(card, findsOneWidget);
+      owner.performAction(node.id, SemanticsAction.didLoseAccessibilityFocus);
+      await tester.pump(const Duration(milliseconds: 2100));
+      expect(card, findsNothing);
+      semantics.dispose();
     });
 
     test('known is on the result, false when absent', () {

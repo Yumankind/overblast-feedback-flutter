@@ -254,7 +254,7 @@ void main() {
       expect((body['context'] as Map)['openedAt'], now);
       expect((body['context'] as Map)['trigger'], 'button');
       // The confirmation goes by itself.
-      await tester.pump(const Duration(milliseconds: 1600));
+      await tester.pump(const Duration(milliseconds: 2100));
       await closed;
       c.info('after');
       expect(c.logs.map((e) => e.msg), ['before', 'after']);

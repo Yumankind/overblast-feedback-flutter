@@ -138,7 +138,7 @@ void main() {
 
     expect(find.text('Sent, thank you.'), findsOneWidget);
     // It goes by itself.
-    await tester.pump(const Duration(milliseconds: 1600));
+    await tester.pump(const Duration(milliseconds: 2100));
     expect(find.text('Sent, thank you.'), findsNothing);
     expect(find.text('Report a problem'), findsNothing);
     await closed;

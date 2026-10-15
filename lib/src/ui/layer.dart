@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../capture.dart';
 import '../payload.dart';
+import 'balanced_text.dart';
 import 'redaction.dart';
 import 'session.dart';
 import 'theme.dart';
@@ -197,7 +199,7 @@ class _SheetFrameState extends State<_SheetFrame> {
             button: true,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: session.sending || done ? null : _close,
+              onTap: session.sending ? null : _close,
               child: ColoredBox(color: done ? const Color(0x33000000) : const Color(0x8A000000)),
             ),
           ),
@@ -807,19 +809,64 @@ class ScreenshotPainter extends CustomPainter {
 String sentLine(FeedbackSession session) =>
     session.result?.known == true ? "Thanks. We already know about this one and we're on it." : 'Sent, thank you.';
 
-/// A small card: a check and one line, which goes by itself (the widget's timer); or, when the report
-/// was kept for later, the reason and Close.
-class _Done extends StatelessWidget {
+/// How long the confirmation stays when nobody touches it: long enough to read its sentence.
+const Duration sentConfirmation = Duration(seconds: 2);
+const Duration knownConfirmation = Duration(seconds: 4);
+
+/// After a send: a small card with a check, the sentence and Done (in the accent), which closes at
+/// once; so do dragging the card down, tapping the scrim and Back. Left alone it closes after
+/// [sentConfirmation] or [knownConfirmation], the clock held while a pointer is over the card or
+/// accessibility focus is on Done, and started afresh when either leaves. When the report was kept
+/// for later, the reason and Close, and no clock.
+class _Done extends StatefulWidget {
   const _Done({required this.session, required this.onClose});
 
   final FeedbackSession session;
   final VoidCallback onClose;
 
   @override
+  State<_Done> createState() => _DoneState();
+}
+
+class _DoneState extends State<_Done> {
+  Timer? _timer;
+  bool _hovered = false;
+  bool _focused = false;
+  double _dragged = 0;
+
+  bool get _saved => widget.session.savedForLater;
+
+  Duration get _stay => widget.session.result?.known == true ? knownConfirmation : sentConfirmation;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_saved) _restart();
+  }
+
+  void _restart() {
+    _timer?.cancel();
+    _timer = _hovered || _focused ? null : Timer(_stay, widget.onClose);
+  }
+
+  void _hold({bool? hovered, bool? focused}) {
+    _hovered = hovered ?? _hovered;
+    _focused = focused ?? _focused;
+    if (!_saved) _restart();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final session = widget.session;
     final theme = Theme.of(context);
     final radius = FeedbackStyle.radiusOf(context);
-    final saved = session.savedForLater;
+    final saved = _saved;
     final lines = saved
         ? [session.error ?? 'The report could not be sent now.', 'It is saved on this device and will be sent later.']
         : [sentLine(session), if (session.result?.notice != null) session.result!.notice!];
@@ -827,46 +874,76 @@ class _Done extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
-        child: Material(
-          key: const ValueKey('overblast_feedback.done'),
-          color: theme.colorScheme.surfaceContainerHigh,
-          elevation: 6,
-          borderRadius: BorderRadius.circular(radius),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+        child: MouseRegion(
+          onEnter: (_) => _hold(hovered: true),
+          onExit: (_) => _hold(hovered: false),
+          child: GestureDetector(
+            // Dragged down far or fast enough, it goes, as a sheet would.
+            onVerticalDragStart: (_) => _dragged = 0,
+            onVerticalDragUpdate: (d) => _dragged += d.delta.dy,
+            onVerticalDragEnd: (d) {
+              if (_dragged > 32 || (d.primaryVelocity ?? 0) > 300) widget.onClose();
+            },
+            child: Material(
+              key: const ValueKey('overblast_feedback.done'),
+              color: theme.colorScheme.surfaceContainerHigh,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(radius),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(saved ? Icons.schedule_send : Icons.check_circle, color: theme.colorScheme.primary, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Semantics(
-                        liveRegion: true,
-                        child: Text(lines.first, style: theme.textTheme.bodyLarge),
+                    Row(
+                      children: [
+                        Icon(
+                          saved ? Icons.schedule_send : Icons.check_circle,
+                          color: theme.colorScheme.primary,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Semantics(
+                            liveRegion: true,
+                            child: BalancedText(lines.first, style: theme.textTheme.bodyLarge),
+                          ),
+                        ),
+                      ],
+                    ),
+                    for (final line in lines.skip(1))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 40),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: BalancedText(line, style: theme.textTheme.bodyMedium),
+                        ),
                       ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: saved
+                          ? TextButton(
+                              key: const ValueKey('overblast_feedback.close'),
+                              onPressed: widget.onClose,
+                              child: const Text('Close'),
+                            )
+                          : FilledButton(
+                              key: const ValueKey('overblast_feedback.done_button'),
+                              // Focus goes here once the sentence is announced, so a keyboard or
+                              // switch user closes it with one press.
+                              autofocus: true,
+                              onPressed: widget.onClose,
+                              // Inside the button, so the handlers merge into the button's own node.
+                              child: Semantics(
+                                onDidGainAccessibilityFocus: () => _hold(focused: true),
+                                onDidLoseAccessibilityFocus: () => _hold(focused: false),
+                                child: const Text('Done'),
+                              ),
+                            ),
                     ),
                   ],
                 ),
-                for (final line in lines.skip(1))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6, left: 40),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text(line, style: theme.textTheme.bodyMedium),
-                    ),
-                  ),
-                if (saved)
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: TextButton(
-                      key: const ValueKey('overblast_feedback.close'),
-                      onPressed: onClose,
-                      child: const Text('Close'),
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
         ),
@@ -928,10 +1005,9 @@ class _Picker extends StatelessWidget {
                   Expanded(
                     child: Semantics(
                       liveRegion: true,
-                      child: Text(
+                      child: BalancedText(
                         session.pickerNote ?? "Tap the part that's wrong",
                         maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onInverseSurface),
                       ),
                     ),

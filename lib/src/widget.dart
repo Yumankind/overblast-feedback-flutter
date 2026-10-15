@@ -360,7 +360,6 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
   @override
   void dispose() {
     _retryTimer?.cancel();
-    _doneTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_controller.closeSession()); // a clean exit
     HardwareKeyboard.instance.removeHandler(_onKey);
@@ -507,8 +506,6 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
   // ── The flow ─────────────────────────────────────────────────────────────────────────────────
 
   void _close() {
-    _doneTimer?.cancel();
-    _doneTimer = null;
     final session = _session;
     if (session == null) return;
     _controller.resumeLogs();
@@ -540,10 +537,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
     session.pendingAnchor = anchor;
   }
 
-  /// The sent confirmation stays this long, then the window closes by itself.
-  static const Duration sentConfirmation = Duration(milliseconds: 1500);
-  Timer? _doneTimer;
-
+  /// Announces the confirmation; the card itself (in the layer) holds Done and its clock.
   void _confirmSent(FeedbackSession session) {
     final line = sentLine(session);
     final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
@@ -551,10 +545,6 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
     // supports does not have.
     // ignore: deprecated_member_use
     unawaited(SemanticsService.announce(line, direction));
-    _doneTimer?.cancel();
-    _doneTimer = Timer(sentConfirmation, () {
-      if (identical(_session, session) && mounted) _close();
-    });
   }
 
   Future<void> _send() async {

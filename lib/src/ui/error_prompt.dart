@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 
 import '../config.dart';
 import '../store/store.dart';
+import 'balanced_text.dart';
 import 'layer.dart';
 
 /// How a shown prompt ended.
@@ -244,7 +245,7 @@ class _FeedbackErrorPromptState extends State<FeedbackErrorPrompt> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Flexible(child: Text(FeedbackErrorPrompt.text, style: data.textTheme.bodyMedium)),
+                            Flexible(child: BalancedText(FeedbackErrorPrompt.text, style: data.textTheme.bodyMedium)),
                             const SizedBox(width: 4),
                             TextButton(
                               key: const ValueKey('overblast_feedback.error_prompt.report'),

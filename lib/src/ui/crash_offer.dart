@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'balanced_text.dart';
 import 'layer.dart';
 import 'theme.dart';
 
@@ -40,7 +41,7 @@ class FeedbackCrashOffer extends StatelessWidget {
                         children: [
                           Semantics(
                             liveRegion: true,
-                            child: Text(
+                            child: BalancedText(
                               'The app closed unexpectedly. Send a report?',
                               style: data.textTheme.bodyLarge,
                             ),
