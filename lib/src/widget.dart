@@ -20,6 +20,7 @@ import 'ui/crash_offer.dart';
 import 'ui/error_prompt.dart';
 import 'ui/layer.dart';
 import 'ui/session.dart';
+import 'ui/theme.dart';
 
 /// Shake-to-report around a Flutter app.
 ///
@@ -118,8 +119,11 @@ class OverblastFeedback extends StatefulWidget {
   /// [controller] is given (pass them to the controller).
   final List<String> appHosts;
 
-  /// The sheet's theme. Defaults to Material 3 following the system's light or dark setting.
-  final ThemeData? theme;
+  /// The window's look: accent, font and radius (`FeedbackTheme`). Unset, it follows the app's own
+  /// `ThemeData` (found under or above `MaterialApp`), or Material 3 in the system's brightness when
+  /// the app has none. It applies to the sheet, the picker, the screenshot editor, the error prompt
+  /// and the crash card.
+  final FeedbackTheme? theme;
 
   final http.Client? httpClient;
   final FeedbackStore? store;
@@ -266,6 +270,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
     if (!mounted) {
       completer.complete((ErrorPromptOutcome.timedOut, _controller.nowMillis));
     } else {
+      _readAppTheme();
       setState(() => _prompt = completer);
     }
     return completer.future;
@@ -284,6 +289,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
     controller.startSession().then((previous) {
       if (!mounted || !identical(controller, _controller)) return;
       if (previous != null && widget.offerReportAfterCrash && identical(controller.pendingCrash, previous)) {
+        _readAppTheme();
         setState(() => _offer = previous);
       }
     });
@@ -354,6 +360,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
   @override
   void dispose() {
     _retryTimer?.cancel();
+    _doneTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_controller.closeSession()); // a clean exit
     HardwareKeyboard.instance.removeHandler(_onKey);
@@ -377,13 +384,34 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
 
   @override
   Future<bool> didPopRoute() async {
-    if (_session == null) return false;
-    if (_session!.stage == FeedbackStage.picking) {
-      _session!.stage = FeedbackStage.sheet;
-    } else if (!_session!.sending) {
-      _close();
+    final session = _session;
+    if (session == null) return false;
+    switch (session.stage) {
+      case FeedbackStage.picking:
+        session.cancelPicking();
+      case FeedbackStage.editing:
+        session.stage = FeedbackStage.sheet;
+      case FeedbackStage.sheet:
+      case FeedbackStage.done:
+        if (!session.sending) _close();
     }
     return true;
+  }
+
+  /// The app's theme, looked up when an overlay opens: the element tree cannot be walked during a
+  /// build, and the app's theme rarely changes while the sheet is up.
+  ThemeData? _appTheme;
+
+  void _readAppTheme() {
+    if (!mounted) return;
+    final below = _boundaryKey.currentContext;
+    _appTheme = findAppTheme(context, below: below is Element ? below : null);
+  }
+
+  /// The resolved theme for everything the widget draws over the app.
+  ThemeData _theme() {
+    final brightness = View.maybeOf(context)?.platformDispatcher.platformBrightness ?? Brightness.light;
+    return resolveFeedbackTheme(app: _appTheme, custom: widget.theme, brightness: brightness);
   }
 
   // ── FeedbackPresenter ────────────────────────────────────────────────────────────────────────
@@ -455,6 +483,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
     session.logsAtOpen = logsAtOpen;
     _controller.pauseLogs();
     final prompt = _prompt;
+    _readAppTheme();
     setState(() {
       _session = session;
       _offer = null;
@@ -478,6 +507,8 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
   // ── The flow ─────────────────────────────────────────────────────────────────────────────────
 
   void _close() {
+    _doneTimer?.cancel();
+    _doneTimer = null;
     final session = _session;
     if (session == null) return;
     _controller.resumeLogs();
@@ -505,8 +536,25 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
       return;
     }
     session.pickerNote = null;
-    session.anchor = anchor;
-    session.stage = FeedbackStage.sheet;
+    // Shown with its box on the frozen screen; "Use this" makes it the pick.
+    session.pendingAnchor = anchor;
+  }
+
+  /// The sent confirmation stays this long, then the window closes by itself.
+  static const Duration sentConfirmation = Duration(milliseconds: 1500);
+  Timer? _doneTimer;
+
+  void _confirmSent(FeedbackSession session) {
+    final line = sentLine(session);
+    final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
+    // Polite. `announce` rather than `sendAnnouncement`, which the oldest Flutter this package
+    // supports does not have.
+    // ignore: deprecated_member_use
+    unawaited(SemanticsService.announce(line, direction));
+    _doneTimer?.cancel();
+    _doneTimer = Timer(sentConfirmation, () {
+      if (identical(_session, session) && mounted) _close();
+    });
   }
 
   Future<void> _send() async {
@@ -529,7 +577,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
       final capture = session.capture;
       if (session.includeScreenshot && capture != null) {
         final highlight = session.anchorRect(capture.logicalSize);
-        final bytes = await capture.encodePng(highlight: highlight);
+        final bytes = await capture.encodePng(highlight: highlight, redactions: session.redactions);
         if (bytes == null) {
           session.error = 'The screenshot is too large to send. Remove it and send again.';
           return;
@@ -551,6 +599,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
       if (!identical(_session, session)) return;
       session.result = result;
       session.stage = FeedbackStage.done;
+      _confirmSent(session);
     } on OverblastFeedbackException catch (e) {
       if (!identical(_session, session)) return;
       session.error = e.message;
@@ -581,7 +630,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
               child: FeedbackLayer(
                 key: ObjectKey(session),
                 session: session,
-                theme: widget.theme,
+                theme: _theme(),
                 onClose: _close,
                 onPick: _pick,
                 onSend: _send,
@@ -591,7 +640,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
           if (session == null && _offer == null && _prompt != null)
             Positioned.fill(
               child: FeedbackErrorPrompt(
-                theme: widget.theme,
+                theme: _theme(),
                 onReport: () => _endPrompt(ErrorPromptOutcome.report),
                 onClose: () => _endPrompt(ErrorPromptOutcome.dismissed),
                 onTimeout: () => _endPrompt(ErrorPromptOutcome.timedOut),
@@ -600,7 +649,7 @@ class _OverblastFeedbackState extends State<OverblastFeedback>
           if (session == null && _offer != null)
             Positioned.fill(
               child: FeedbackCrashOffer(
-                theme: widget.theme,
+                theme: _theme(),
                 onSend: () => _answerOffer(true),
                 onDismiss: () => _answerOffer(false),
               ),

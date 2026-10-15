@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'layer.dart';
+import 'theme.dart';
 
 /// The one-time prompt after an unexpected end (docs/feedback-reports.md §3.4): a small card at the
 /// bottom of the screen, over the app but outside its captured surface, that leaves the app usable
@@ -29,7 +30,7 @@ class FeedbackCrashOffer extends StatelessWidget {
                   child: Material(
                     key: const ValueKey('overblast_feedback.crash_offer'),
                     elevation: 6,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(FeedbackStyle.radiusOf(context) * 0.7),
                     color: data.colorScheme.surfaceContainerHigh,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),

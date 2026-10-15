@@ -32,4 +32,5 @@ export 'src/verification/pow.dart' show PowSolver;
 export 'src/verification/registration.dart'
     show FeedbackDeviceLevel, FeedbackDeviceMethod, FeedbackDeviceRegistration;
 export 'src/version.dart' show sdkName, sdkVersion;
+export 'src/ui/theme.dart' show FeedbackTheme;
 export 'src/widget.dart' show OverblastFeedback;

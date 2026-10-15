@@ -115,7 +115,7 @@ report.
 | `appHosts` | none | Your own API hosts, whose 5xx and failed requests count towards the error prompt |
 | `trackCrashes` | `true` | Keep the log on disk and a session marker, for the report after a crash |
 | `offerReportAfterCrash` | `true` | After an unexpected end, offer a report once at the next launch |
-| `theme` | Material 3, light or dark with the system | The sheet's theme |
+| `theme` | the app's own theme | `FeedbackTheme(accent:, fontFamily:, radius:)`; see "Its look" |
 | `httpClient`, `store` | real ones | For tests and custom storage |
 
 The controller also takes `timeZone` (pass an IANA name such as `Europe/Lisbon` if the app knows it;
@@ -124,21 +124,47 @@ also settable with `setExtra(key, value)`).
 
 ## The sheet
 
-- **Message** (required) and **category**: Bug (the default), Idea, Question, Other.
-- **Email**, only when the app has not supplied one through the reporter: optional, "only if you
-  would like a reply".
-- **Point at the problem**: the screen as it was when the sheet opened, full size; a tap selects
-  the widget there, and its box is drawn on the screenshot.
-- **Attach a screenshot**: **off by default**. Turned on, the image is shown as a thumbnail with
-  Remove, exactly as it will be sent.
+A bottom sheet with a drag handle and two sizes: it opens at half height (full height on a small
+screen, or once the keyboard is up) and drags up to full. It never grows past the screen: its body
+scrolls, and Cancel and Send stay pinned at its foot, just above the keyboard.
+
+- **Category** at the top: only the ones the key takes (none to choose when it takes one).
+- **Message** (required), a large field. **Email**, only when the app has not supplied one through
+  the reporter: optional, "only if you would like a reply".
+- **Point at the problem**: the screen as it was when the sheet opened, full size, with "Tap the
+  part that's wrong" at the top. A tap selects the widget there and frames it; "Use this" confirms,
+  "Pick again" clears. Back in the form, the pick is a thumbnail of the screen round the widget with
+  its box drawn, its name, and Change and Remove.
+- **Attach a screenshot**: **off by default**. Turned on, it shows a preview exactly as it will be
+  sent. Tapping it opens an editor: drag to draw boxes that **cover** (solid) or **blur** what is
+  under them, with Undo and Clear. Private regions are painted over before the image ever reaches the
+  editor, so nothing there can uncover them.
 - A line saying what will be sent: the message, the selected element, the screenshot, device and
   app details, and this session's logs and network calls.
-- **Send**. A refusal shows the worker's own sentence. A `429` (too many reports from this device),
+- **Send**. On success, a small "Sent, thank you" for about a second and a half, announced to screen
+  readers, then the window closes. When the report joined an issue the team already has
+  (`result.known`), it reads "Thanks. We already know about this one and we're on it." A refusal
+  keeps the sheet open with the worker's own sentence. A `429` (too many reports from this device),
   or no connection at all, keeps the report on the device and says so; it is tried again once at the
   next start (or when you call `retryPending()`), never in a loop.
 
-Dark mode follows the system; the sheet is a labelled route for screen readers, and errors are live
-regions.
+The sheet is a labelled route for screen readers, errors are live regions, text scales without
+overflowing (the buttons stack), and with animations off nothing animates.
+
+### Its look
+
+```dart
+OverblastFeedback(
+  theme: const FeedbackTheme(accent: Color(0xFF0B7A5A), fontFamily: 'Inter', radius: 16),
+  child: MaterialApp(...),
+)
+```
+
+Without a `theme`, the window follows your app's own `ThemeData` (its colour scheme and text theme),
+whether `OverblastFeedback` sits above `MaterialApp` or inside its `builder`; with no app theme, Material
+3 in the system's light or dark. `accent` colours Send, the selected category, the pick's frame and
+the links; `radius` rounds the sheet and the cards; `data` starts from a whole `ThemeData` of your
+own. The same look applies to the picker, the editor, the error prompt and the crash card.
 
 ## Privacy
 

@@ -8,7 +8,14 @@ final Uri defaultFeedbackEndpoint = Uri.parse('https://brain.deployd.network/v1/
 
 /// What the worker answered when it filed the report.
 class FeedbackResult {
-  const FeedbackResult({this.id, this.taskId, this.conversationId, this.notice, this.storageFull = false});
+  const FeedbackResult({
+    this.id,
+    this.taskId,
+    this.conversationId,
+    this.notice,
+    this.storageFull = false,
+    this.known = false,
+  });
 
   /// `fbr_...`.
   final String? id;
@@ -22,6 +29,11 @@ class FeedbackResult {
 
   /// A sentence for the reporter when the report was filed with a caveat.
   final String? notice;
+
+  /// The report joined an issue the team already has (docs/feedback-reports.md §3.3, §9.2). The
+  /// sheet then thanks the person with "Thanks. We already know about this one and we're on it.",
+  /// and nothing else about the issue is ever shown.
+  final bool known;
 }
 
 /// A refusal, or a report that never reached the worker.
@@ -144,7 +156,12 @@ FeedbackResult interpretResponse(int status, String body, {Map<String, String> h
   String? str(String key) => json[key] is String ? json[key] as String : null;
 
   if (status >= 200 && status < 300) {
-    return FeedbackResult(id: str('id'), taskId: str('taskId'), conversationId: str('conversationId'));
+    return FeedbackResult(
+      id: str('id'),
+      taskId: str('taskId'),
+      conversationId: str('conversationId'),
+      known: json['known'] == true,
+    );
   }
   final code = str('code') ?? (status == 429 ? 'rate_limited' : 'http_$status');
   final field = str('field');
@@ -159,6 +176,7 @@ FeedbackResult interpretResponse(int status, String body, {Map<String, String> h
       conversationId: str('conversationId'),
       storageFull: true,
       notice: sentence,
+      known: json['known'] == true,
     );
   }
   int? retryAfter;

@@ -60,6 +60,13 @@ void main() {
     }
   }
 
+  /// The sheet opens at half height, so a control may be below the fold: scroll to it, then tap.
+  Future<void> tapIn(WidgetTester tester, Finder finder) async {
+    await tester.ensureVisible(finder);
+    await tester.pump();
+    await tester.tap(finder);
+  }
+
   testWidgets('message, point at the button, send: the body is the contract and the element is the button', (
     tester,
   ) async {
@@ -83,17 +90,23 @@ void main() {
       isNull,
     );
     await tester.enterText(find.byKey(const ValueKey('overblast_feedback.message')), "The total doesn't update");
-    await tester.tap(find.text('Question'));
+    await tapIn(tester, find.text('Question'));
     await tester.pump();
 
-    await tester.tap(find.byKey(const ValueKey('overblast_feedback.point')));
+    await tapIn(tester, find.byKey(const ValueKey('overblast_feedback.point')));
     await tester.pump();
-    expect(find.text('Tap the part of the screen that is wrong.'), findsOneWidget);
+    expect(find.text("Tap the part that's wrong"), findsOneWidget);
     await tester.tapAt(tester.getCenter(find.byKey(const ValueKey('cart.remove'))));
     await tester.pump();
+    // The pick is shown on the frozen screen first; "Use this" confirms it.
     expect(find.text('ElevatedButton “Remove”'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('overblast_feedback.pick_confirm')));
+    await tester.pump();
+    expect(find.text('ElevatedButton “Remove”'), findsOneWidget);
+    expect(find.byKey(const ValueKey('overblast_feedback.pick_change')), findsOneWidget);
     expect(find.textContaining('the selected element'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const ValueKey('overblast_feedback.email')));
     await tester.enterText(find.byKey(const ValueKey('overblast_feedback.email')), 'ana@example.com');
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('overblast_feedback.send')));
@@ -123,9 +136,10 @@ void main() {
     expect((element['path']! as List).last, 'ElevatedButton');
     expect((body['logs']! as List).first, containsPair('msg', 'cart loaded'));
 
-    expect(find.text('Thank you. Your report was sent.'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('overblast_feedback.close')));
-    await tester.pump();
+    expect(find.text('Sent, thank you.'), findsOneWidget);
+    // It goes by itself.
+    await tester.pump(const Duration(milliseconds: 1600));
+    expect(find.text('Sent, thank you.'), findsNothing);
     expect(find.text('Report a problem'), findsNothing);
     await closed;
   });
@@ -141,11 +155,13 @@ void main() {
     }
     expect(find.text('Private fields are blanked out.'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('overblast_feedback.point')));
+    await tapIn(tester, find.byKey(const ValueKey('overblast_feedback.point')));
     await tester.pump();
     await tester.tapAt(tester.getCenter(find.byKey(const ValueKey('cart.remove'), skipOffstage: false)));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('overblast_feedback.screenshot')));
+    await tester.tap(find.byKey(const ValueKey('overblast_feedback.pick_confirm')));
+    await tester.pump();
+    await tapIn(tester, find.byKey(const ValueKey('overblast_feedback.screenshot')));
     await tester.pump();
     expect(find.byKey(const ValueKey('overblast_feedback.remove_screenshot')), findsOneWidget);
     expect(find.textContaining('the screenshot'), findsOneWidget);
@@ -168,7 +184,7 @@ void main() {
     final png = base64Decode(shot['base64']! as String);
     expect(png.sublist(1, 4), 'PNG'.codeUnits);
     expect((body['element']! as Map)['id'], 'cart.remove');
-    expect(find.text('Thank you. Your report was sent.'), findsOneWidget);
+    expect(find.text('Sent, thank you.'), findsOneWidget);
   });
 
   testWidgets('removing the screenshot sends none', (tester) async {
@@ -179,9 +195,9 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
     }
-    await tester.tap(find.byKey(const ValueKey('overblast_feedback.screenshot')));
+    await tapIn(tester, find.byKey(const ValueKey('overblast_feedback.screenshot')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('overblast_feedback.remove_screenshot')));
+    await tapIn(tester, find.byKey(const ValueKey('overblast_feedback.remove_screenshot')));
     await tester.pump();
     expect(find.byKey(const ValueKey('overblast_feedback.remove_screenshot')), findsNothing);
     await tester.ensureVisible(find.byKey(const ValueKey('overblast_feedback.send')));
@@ -235,6 +251,7 @@ void main() {
     await tester.pumpWidget(wrapped(const MaterialApp(home: CartScreen())));
     unawaited(controller.show(message: 'x'));
     await tester.pump();
+    await tester.ensureVisible(find.byKey(const ValueKey('overblast_feedback.email')));
     await tester.enterText(find.byKey(const ValueKey('overblast_feedback.email')), 'ana@');
     await tester.tap(find.byKey(const ValueKey('overblast_feedback.send')));
     await settle(tester);
@@ -262,7 +279,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('overblast_feedback.send')));
     await settle(tester);
-    expect(find.text('Thank you. Your report was sent.'), findsOneWidget);
+    expect(find.text('Sent, thank you.'), findsOneWidget);
     expect(jsonDecode(requests.single.body)['message'], 'From the builder');
   });
 

@@ -253,8 +253,8 @@ void main() {
       expect(body.containsKey('network'), isFalse);
       expect((body['context'] as Map)['openedAt'], now);
       expect((body['context'] as Map)['trigger'], 'button');
-      await tester.tap(find.byKey(const ValueKey('overblast_feedback.close')));
-      await tester.pump();
+      // The confirmation goes by itself.
+      await tester.pump(const Duration(milliseconds: 1600));
       await closed;
       c.info('after');
       expect(c.logs.map((e) => e.msg), ['before', 'after']);

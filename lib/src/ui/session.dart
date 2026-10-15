@@ -8,8 +8,12 @@ import '../crash.dart';
 import '../log_buffer.dart';
 import '../payload.dart';
 import '../transport.dart';
+import 'redaction.dart';
 
-enum FeedbackStage { sheet, picking, done }
+
+/// Where the window is: the form, picking an element on the frozen screen, editing the screenshot,
+/// or the short confirmation after sending.
+enum FeedbackStage { sheet, picking, editing, done }
 
 /// One open sheet: what the reporter has typed and chosen so far. It outlives the sheet's widgets,
 /// which come and go as the reporter switches to the picker and back.
@@ -63,6 +67,45 @@ class FeedbackSession extends ChangeNotifier {
   NativeAnchor? get anchor => _anchor;
   set anchor(NativeAnchor? v) => _set(() => _anchor = v);
 
+  /// The element tapped in the picker, waiting for "Use this".
+  NativeAnchor? _pendingAnchor;
+  NativeAnchor? get pendingAnchor => _pendingAnchor;
+  set pendingAnchor(NativeAnchor? v) => _set(() => _pendingAnchor = v);
+
+  /// Opens the picker, starting from the current pick.
+  void startPicking() => _set(() {
+    _pendingAnchor = _anchor;
+    pickerNote = null;
+    _stage = FeedbackStage.picking;
+  });
+
+  /// "Use this": the pending pick becomes the pick.
+  void confirmPick() => _set(() {
+    if (_pendingAnchor != null) _anchor = _pendingAnchor;
+    _pendingAnchor = null;
+    pickerNote = null;
+    _stage = FeedbackStage.sheet;
+  });
+
+  void cancelPicking() => _set(() {
+    _pendingAnchor = null;
+    pickerNote = null;
+    _stage = FeedbackStage.sheet;
+  });
+
+  // ── The screenshot editor ──
+
+  final List<FeedbackRedaction> _redactions = [];
+  List<FeedbackRedaction> get redactions => List.unmodifiable(_redactions);
+  FeedbackRedactionKind tool = FeedbackRedactionKind.cover;
+
+  void addRedaction(FeedbackRedaction r) => _set(() => _redactions.add(r));
+  void undoRedaction() => _set(() {
+    if (_redactions.isNotEmpty) _redactions.removeLast();
+  });
+  void clearRedactions() => _set(_redactions.clear);
+  void setTool(FeedbackRedactionKind kind) => _set(() => tool = kind);
+
   bool _includeScreenshot = false;
   bool get includeScreenshot => screenshotsAllowed && _includeScreenshot && _capture != null;
   set includeScreenshot(bool v) => _set(() => _includeScreenshot = v);
@@ -101,9 +144,10 @@ class FeedbackSession extends ChangeNotifier {
     });
   }
 
-  /// The selected element's box in the captured surface's logical pixels.
-  Rect? anchorRect(Size surface) {
-    final a = _anchor;
+  /// The selected element's box in the captured surface's logical pixels ([pending]: the pick
+  /// waiting for confirmation).
+  Rect? anchorRect(Size surface, {bool pending = false}) {
+    final a = pending ? _pendingAnchor : _anchor;
     if (a == null) return null;
     return Rect.fromLTWH(
       a.rect.x * surface.width,

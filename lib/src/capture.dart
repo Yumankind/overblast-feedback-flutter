@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 
 import 'payload.dart';
 import 'private.dart';
+import 'ui/redaction.dart';
 
 /// The colour private regions are painted with.
 const Color privateFill = Color(0xFF26282B);
@@ -67,12 +68,17 @@ class FeedbackCapture {
     }
   }
 
-  /// PNG bytes of the image, with [highlight] (logical pixels) drawn on it when given, made smaller
-  /// until it fits [maxBytes]. Null if it cannot be made to fit.
+  /// PNG bytes of the image, with the reporter's [redactions] applied (covers and blurs from the
+  /// editor) and [highlight] (logical pixels) drawn on it when given, made smaller until it fits
+  /// [maxBytes]. Null if it cannot be made to fit.
   ///
   /// PNG, not JPEG: Flutter encodes PNG without a dependency, and a screen of flat interface colours
   /// compresses well in it.
-  Future<Uint8List?> encodePng({Rect? highlight, int maxBytes = FeedbackLimits.screenshotBytes}) async {
+  Future<Uint8List?> encodePng({
+    Rect? highlight,
+    List<FeedbackRedaction> redactions = const [],
+    int maxBytes = FeedbackLimits.screenshotBytes,
+  }) async {
     if (_disposed) return null;
     var scale = 1.0;
     for (var attempt = 0; attempt < 5; attempt++) {
@@ -80,8 +86,8 @@ class FeedbackCapture {
       final h = math.max(1, (image.height * scale).round());
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
+      paintRedacted(canvas, image, pixelRatio: pixelRatio, scale: scale, redactions: redactions);
       canvas.scale(scale);
-      canvas.drawImage(image, Offset.zero, Paint()..filterQuality = FilterQuality.medium);
       if (highlight != null) paintHighlight(canvas, _scale(highlight, pixelRatio), pixelRatio);
       final picture = recorder.endRecording();
       final out = await picture.toImage(w, h);
